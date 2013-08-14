@@ -11,6 +11,7 @@ import (
 	"errors"
 	"crypto/md5"
 	"io"
+	"encoding/hex"
 )
 
 // A Client is a RouterOS API client.
@@ -79,25 +80,29 @@ func (c *Client) Connect(user string, password string) error {
 	}
 	
 	// handle challenge/response
-	challenge, err := getPairValue(res, "ret")
+	challengeEnc, err := getPairValue(res, "ret")
 	if err != nil {
 		return errors.New("Didn't get challenge from ROS")
 	}
+	challenge, err := hex.DecodeString(challengeEnc)
+	if err != nil {
+		return err
+	}	
 	h := md5.New()
-	io.WriteString(h, "\x00")
+	io.WriteString(h, "\000")
 	io.WriteString(h, password)
-	io.WriteString(h, challenge)
-	resp := fmt.Sprintf("%x", h.Sum(nil))
+	h.Write(challenge)
+	resp := fmt.Sprintf("00%x", h.Sum(nil))
 	var loginParams []Pair
 	loginParams = append(loginParams, *NewPair("name", password))
 	loginParams = append(loginParams, *NewPair("response", resp))
 	
+	// try to log in again with challenge/response
 	res, err = c.Call("/login", loginParams)
 	if err != nil {
 		return err
 	}
 	fmt.Println(res)
-	// handle challenge
 
 	return nil
 }
