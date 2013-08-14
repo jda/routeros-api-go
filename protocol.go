@@ -8,7 +8,9 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	//"crypto/md5"
+	"errors"
+	"crypto/md5"
+	"io"
 )
 
 // A Client is a RouterOS API client.
@@ -28,6 +30,23 @@ type Client struct {
 type Pair struct {
 	Key   string
 	Value string
+}
+
+func NewPair(key string, value string) *Pair {
+	p := new(Pair)
+	p.Key = key
+	p.Value = value
+	return p
+}
+
+// Get value for a specific key
+func getPairValue(p []Pair, key string) (string, error) {
+	for _, v := range p {
+		if v.Key == key {
+			return v.Value, nil
+		}
+	}
+	return "", errors.New("key not found")
 }
 
 func NewRouterOSClient(address string) (*Client, error) {
@@ -58,8 +77,26 @@ func (c *Client) Connect(user string, password string) error {
 	if err != nil {
 		return err
 	}
+	
+	// handle challenge/response
+	challenge, err := getPairValue(res, "ret")
+	if err != nil {
+		return errors.New("Didn't get challenge from ROS")
+	}
+	h := md5.New()
+	io.WriteString(h, "\x00")
+	io.WriteString(h, password)
+	io.WriteString(h, challenge)
+	resp := fmt.Sprintf("%x", h.Sum(nil))
+	var loginParams []Pair
+	loginParams = append(loginParams, *NewPair("name", password))
+	loginParams = append(loginParams, *NewPair("response", resp))
+	
+	res, err = c.Call("/login", loginParams)
+	if err != nil {
+		return err
+	}
 	fmt.Println(res)
-
 	// handle challenge
 
 	return nil
