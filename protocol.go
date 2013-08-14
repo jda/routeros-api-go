@@ -3,15 +3,15 @@ package routeros
 
 import (
 	"bytes"
+	"crypto/md5"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"github.com/jcelliott/lumber"
+	"io"
 	"net"
 	"strconv"
 	"strings"
-	"errors"
-	"crypto/md5"
-	"io"
-	"encoding/hex"
 )
 
 // A Client is a RouterOS API client.
@@ -31,6 +31,13 @@ type Client struct {
 type Pair struct {
 	Key   string
 	Value string
+	Op    string
+}
+
+type Query struct {
+	Pairs    []Pair
+	Op       string
+	Proplist []string
 }
 
 func NewPair(key string, value string) *Pair {
@@ -41,7 +48,7 @@ func NewPair(key string, value string) *Pair {
 }
 
 // Get value for a specific key
-func getPairValue(p []Pair, key string) (string, error) {
+func GetPairValue(p []Pair, key string) (string, error) {
 	for _, v := range p {
 		if v.Key == key {
 			return v.Value, nil
@@ -63,12 +70,15 @@ func NewRouterOSClient(address string) (*Client, error) {
 	return &c, nil
 }
 
+func (c *Client) Close() {
+	c.conn.Close()
+}
+
 func (c *Client) Connect(user string, password string) error {
 	conn, err := net.Dial("tcp", c.address)
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
 
 	// stash conn in instance
 	c.conn = conn
@@ -78,16 +88,16 @@ func (c *Client) Connect(user string, password string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// handle challenge/response
-	challengeEnc, err := getPairValue(res, "ret")
+	challengeEnc, err := GetPairValue(res, "ret")
 	if err != nil {
 		return errors.New("Didn't get challenge from ROS")
 	}
 	challenge, err := hex.DecodeString(challengeEnc)
 	if err != nil {
 		return err
-	}	
+	}
 	h := md5.New()
 	io.WriteString(h, "\000")
 	io.WriteString(h, password)
@@ -96,7 +106,7 @@ func (c *Client) Connect(user string, password string) error {
 	var loginParams []Pair
 	loginParams = append(loginParams, *NewPair("name", password))
 	loginParams = append(loginParams, *NewPair("response", resp))
-	
+
 	// try to log in again with challenge/response
 	res, err = c.Call("/login", loginParams)
 	if err != nil {
@@ -153,6 +163,48 @@ func (c *Client) receive() ([]Pair, error) {
 	}
 
 	return pairs, nil
+}
+
+func (c *Client) Query(command string, q Query) ([]Pair, error) {
+	err := c.send(command)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set property list if present
+	if len(q.Proplist) > 0 {
+		proplist := fmt.Sprintf("=.proplist=%s", strings.Join(q.Proplist, ","))
+		err = c.send(proplist)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// send params if we got them
+	if len(q.Pairs) > 0 {
+		for _, v := range q.Pairs {
+			word := fmt.Sprintf("?%s%s=%s", v.Op, v.Key, v.Value)
+			c.send(word)
+		}
+
+		if q.Op != "" {
+			word := fmt.Sprintf("?#%s", q.Op)
+			c.send(word)
+		}
+	}
+
+	// send terminator
+	err = c.send("")
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := c.receive()
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
 }
 
 func (c *Client) Call(command string, params []Pair) ([]Pair, error) {

@@ -57,5 +57,51 @@ func TestLogin(t *testing.T) {
 
 // Test running a command (uptime)
 func TestCommand(t *testing.T) {
+	tv := PrepVars(t)
+	c, err := NewRouterOSClient(tv.Address)
+	if err != nil {
+		t.Error(nil)
+	}
 
+	err = c.Connect(tv.Username, tv.Password)
+	if err != nil {
+		t.Error(err)
+	}
+
+	res, err := c.Call("/system/resource/getall", nil)
+	if err != nil {
+		t.Error(err)
+	}
+	uptime, err := GetPairValue(res, "uptime")
+	t.Logf("Uptime: %s\n", uptime)
+}
+
+// Test querying data (getting IP addresses on ether1)
+func TestQuery(t *testing.T) {
+	tv := PrepVars(t)
+	c, err := NewRouterOSClient(tv.Address)
+	if err != nil {
+		t.Error(nil)
+	}
+
+	err = c.Connect(tv.Username, tv.Password)
+	if err != nil {
+		t.Error(err)
+	}
+
+	getEther1Addrs := NewPair("interface", "ether1")
+	getEther1Addrs.Op = "="
+	var q Query
+	q.Pairs = append(q.Pairs, *getEther1Addrs)
+	q.Proplist = []string{"address"}
+
+	res, err := c.Query("/ip/address/print", q)
+	if err != nil {
+		t.Error(err)
+	}
+
+	t.Log("IP addresses on ether1:")
+	for _, v := range res {
+		t.Log(v.Value)
+	}
 }
