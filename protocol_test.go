@@ -72,7 +72,7 @@ func TestCommand(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	uptime, err := GetPairValue(res, "uptime")
+	uptime, err := GetPairVal(res.SubPairs[0], "uptime")
 	t.Logf("Uptime: %s\n", uptime)
 }
 
@@ -101,7 +101,35 @@ func TestQuery(t *testing.T) {
 	}
 
 	t.Log("IP addresses on ether1:")
-	for _, v := range res {
-		t.Log(v.Value)
+	for _, v := range res.SubPairs {
+		for _, sv := range v {
+			t.Log(sv.Value)
+		}
 	}
+}
+
+// Test getting list of interfaces (multiple return items)
+func TestQueryMultiple(t *testing.T) {
+	tv := PrepVars(t)
+	c, err := New(tv.Address)
+	if err != nil {
+		t.Error(nil)
+	}
+
+	err = c.Connect(tv.Username, tv.Password)
+	if err != nil {
+		t.Error(err)
+	}
+
+	var q Query
+	q.Pairs = append(q.Pairs, Pair{Key: "type", Value: "ether", Op: "="})
+
+	res, err := c.Query("/interface/print", q)
+	if err != nil {
+		t.Error(err)
+	}
+	if len(res.SubPairs) <= 1 {
+		t.Error("Did not get multiple SubPairs from interface query")
+	}
+	//t.Log(res)
 }
