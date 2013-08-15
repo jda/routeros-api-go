@@ -1,4 +1,4 @@
-// Package routeros provides a Client interface to to the Mikrotik RouterOS API
+// Package routeros provides a programmatic interface to to the Mikrotik RouterOS API
 package routeros
 
 import (
@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-// A Client is a RouterOS API client.
+// Client is a RouterOS API client.
 type Client struct {
 	// Network Address.
 	// E.g. "10.0.0.1:8728" or "router.example.com:8728"
@@ -27,10 +27,14 @@ type Client struct {
 	conn     net.Conn // Connection to pass around
 }
 
+// Pair is a Key-Value pair for RouterOS Attribute, Query, and Reply words
 // use slices of pairs instead of map because we care about order
 type Pair struct {
 	Key   string
 	Value string
+	// Op is used for Query words to signify logical operations
+	// valid operators are -, =, <, >
+	// see http://wiki.mikrotik.com/wiki/Manual:API#Queries for details.
 	Op    string
 }
 
@@ -57,6 +61,7 @@ func GetPairValue(p []Pair, key string) (string, error) {
 	return "", errors.New("key not found")
 }
 
+// Create a new instance of the RouterOS API client
 func NewRouterOSClient(address string) (*Client, error) {
 	// basic validation of host address
 	_, _, err := net.SplitHostPort(address)
