@@ -44,7 +44,7 @@ func PrepVars(t *testing.T) TestVars {
 // Test logging in and out
 func TestLogin(t *testing.T) {
 	tv := PrepVars(t)
-	c, err := NewRouterOSClient(tv.Address)
+	c, err := New(tv.Address)
 	if err != nil {
 		t.Error(nil)
 	}
@@ -58,7 +58,7 @@ func TestLogin(t *testing.T) {
 // Test running a command (uptime)
 func TestCommand(t *testing.T) {
 	tv := PrepVars(t)
-	c, err := NewRouterOSClient(tv.Address)
+	c, err := New(tv.Address)
 	if err != nil {
 		t.Error(nil)
 	}
@@ -79,7 +79,7 @@ func TestCommand(t *testing.T) {
 // Test querying data (getting IP addresses on ether1)
 func TestQuery(t *testing.T) {
 	tv := PrepVars(t)
-	c, err := NewRouterOSClient(tv.Address)
+	c, err := New(tv.Address)
 	if err != nil {
 		t.Error(nil)
 	}

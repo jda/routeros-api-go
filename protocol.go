@@ -62,7 +62,7 @@ func GetPairValue(p []Pair, key string) (string, error) {
 }
 
 // Create a new instance of the RouterOS API client
-func NewRouterOSClient(address string) (*Client, error) {
+func New(address string) (*Client, error) {
 	// basic validation of host address
 	_, _, err := net.SplitHostPort(address)
 	if err != nil {
