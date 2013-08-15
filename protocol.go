@@ -117,7 +117,10 @@ func (c *Client) Connect(user string, password string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(res)
+	
+	if len(res) > 0 {
+		return fmt.Errorf("Unexpected result on login: %+v", res)
+	}
 
 	return nil
 }
