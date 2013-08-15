@@ -1,4 +1,8 @@
 routeros-api-go
 ===============
 
-Go library to access the Mikrotik RouterOS API
+Go library to manage Mikrotik routers using the Mikrotik RouterOS API
+
+## To Do
+* Write better docstrings
+* Make README
