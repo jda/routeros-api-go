@@ -30,7 +30,9 @@ func (r *Reply) GetPairVal(key string) (string, error) {
 func (r *Reply) GetSubPairByName(key string) (map[string]string, error) {
 	for _, p := range r.SubPairs {
 		if _, ok := p["name"]; ok {
-			return p, nil
+			if p["name"] == key {
+				return p, nil
+			}
 		}
 	}
 	return nil, errors.New("key not found")
