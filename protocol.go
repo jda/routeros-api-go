@@ -29,7 +29,7 @@ func (c *Client) receive() (Reply, error) {
 
 	re := false
 	done := false
-	var subReply []Pair
+	subReply := make(map[string]string, 1)
 	for {
 		length := c.getlen()
 		if length == 0 && done {
@@ -50,7 +50,7 @@ func (c *Client) receive() (Reply, error) {
 				// we've already used this subreply because it has stuff in it
 				// so we need to close it out and make a new one
 				reply.SubPairs = append(reply.SubPairs, subReply)
-				subReply = make([]Pair, 0)
+				subReply = make(map[string]string, 1)
 			} else {
 				re = true
 			}
@@ -58,13 +58,18 @@ func (c *Client) receive() (Reply, error) {
 		}
 
 		if strings.Contains(word, "=") {
-			var p Pair
 			parts := strings.SplitN(word, "=", 3)
-			p.Key = parts[1]
-			p.Value = parts[2]
+			key := parts[1]
+			val := parts[2]
+			
 			if re {
-				subReply = append(subReply, p)
+				if key != "" {
+					subReply[key] = val
+				}
 			} else {
+				var p Pair
+				p.Key = key
+				p.Value = val
 				reply.Pairs = append(reply.Pairs, p)
 			}
 		}

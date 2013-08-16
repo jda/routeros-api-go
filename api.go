@@ -15,7 +15,7 @@ import (
 // A reply can also contain subpairs, that is, a array of pair arrays.
 type Reply struct {
 	Pairs    []Pair
-	SubPairs [][]Pair
+	SubPairs []map[string]string
 }
 
 func (r *Reply) GetPairVal(key string) (string, error) {
