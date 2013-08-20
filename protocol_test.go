@@ -72,7 +72,8 @@ func TestCommand(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	uptime, err := GetPairVal(res.SubPairs[0], "uptime")
+
+	uptime := res.SubPairs[0]["uptime"]
 	t.Logf("Uptime: %s\n", uptime)
 }
 
@@ -103,7 +104,7 @@ func TestQuery(t *testing.T) {
 	t.Log("IP addresses on ether1:")
 	for _, v := range res.SubPairs {
 		for _, sv := range v {
-			t.Log(sv.Value)
+			t.Log(sv)
 		}
 	}
 }
