@@ -121,7 +121,7 @@ func (c *Client) Connect(user string, password string) error {
 	h.Write(challenge)
 	resp := fmt.Sprintf("00%x", h.Sum(nil))
 	var loginParams []Pair
-	loginParams = append(loginParams, *NewPair("name", password))
+	loginParams = append(loginParams, *NewPair("name", user))
 	loginParams = append(loginParams, *NewPair("response", resp))
 
 	// try to log in again with challenge/response
