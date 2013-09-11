@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/jcelliott/lumber"
 	"io"
 	"net"
 	"strings"
