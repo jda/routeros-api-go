@@ -54,7 +54,6 @@ type Client struct {
 	address  string
 	user     string
 	password string
-	logger   *lumber.Logger
 	debug    bool     // debug logging enabled
 	ready    bool     // Ready for work (login ok and connection not terminated)
 	conn     net.Conn // Connection to pass around
