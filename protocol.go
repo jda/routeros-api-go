@@ -61,7 +61,7 @@ func (c *Client) receive() (Reply, error) {
 			parts := strings.SplitN(word, "=", 3)
 			key := parts[1]
 			val := parts[2]
-			
+
 			if re {
 				if key != "" {
 					subReply[key] = val
