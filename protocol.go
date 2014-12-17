@@ -1,9 +1,7 @@
 // Package routeros provides a programmatic interface to to the Mikrotik RouterOS API
 package routeros
 
-import (
-	"strings"
-)
+import "strings"
 
 // Encode and send a single line
 func (c *Client) send(word string) error {
@@ -39,7 +37,6 @@ func (c *Client) receive() (Reply, error) {
 		inbuf := make([]byte, length)
 		c.conn.Read(inbuf)
 		word := string(inbuf)
-
 		if word == "!done" {
 			done = true
 			continue
@@ -59,8 +56,13 @@ func (c *Client) receive() (Reply, error) {
 
 		if strings.Contains(word, "=") {
 			parts := strings.SplitN(word, "=", 3)
-			key := parts[1]
-			val := parts[2]
+			var key, val string
+			if len(parts) == 3 {
+				key = parts[1]
+				val = parts[2]
+			} else {
+				key = parts[1]
+			}
 
 			if re {
 				if key != "" {
