@@ -1,7 +1,11 @@
 // Package routeros provides a programmatic interface to to the Mikrotik RouterOS API
 package routeros
 
-import "strings"
+import (
+	"fmt"
+	"io"
+	"strings"
+)
 
 // Encode and send a single line
 func (c *Client) send(word string) error {
@@ -35,7 +39,17 @@ func (c *Client) receive() (Reply, error) {
 		}
 
 		inbuf := make([]byte, length)
-		c.conn.Read(inbuf)
+		n, err := io.ReadAtLeast(c.conn, inbuf, int(length))
+		// We don't actually care about EOF, but things like ErrUnspectedEOF we would
+		if err != nil && err != io.EOF {
+			return reply, err
+		}
+
+		// be annoying about reading exactly the correct number of bytes
+		if int64(n) != length {
+			return reply, fmt.Errorf("incorrect number of bytes read")
+		}
+
 		word := string(inbuf)
 		if word == "!done" {
 			done = true
