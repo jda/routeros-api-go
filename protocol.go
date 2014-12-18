@@ -2,6 +2,8 @@
 package routeros
 
 import (
+	"fmt"
+	"io"
 	"strings"
 )
 
@@ -37,9 +39,18 @@ func (c *Client) receive() (Reply, error) {
 		}
 
 		inbuf := make([]byte, length)
-		c.conn.Read(inbuf)
-		word := string(inbuf)
+		n, err := io.ReadAtLeast(c.conn, inbuf, int(length))
+		// We don't actually care about EOF, but things like ErrUnspectedEOF we would
+		if err != nil && err != io.EOF {
+			return reply, err
+		}
 
+		// be annoying about reading exactly the correct number of bytes
+		if int64(n) != length {
+			return reply, fmt.Errorf("incorrect number of bytes read")
+		}
+
+		word := string(inbuf)
 		if word == "!done" {
 			done = true
 			continue
@@ -59,8 +70,13 @@ func (c *Client) receive() (Reply, error) {
 
 		if strings.Contains(word, "=") {
 			parts := strings.SplitN(word, "=", 3)
-			key := parts[1]
-			val := parts[2]
+			var key, val string
+			if len(parts) == 3 {
+				key = parts[1]
+				val = parts[2]
+			} else {
+				key = parts[1]
+			}
 
 			if re {
 				if key != "" {
