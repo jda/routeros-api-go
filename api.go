@@ -2,6 +2,7 @@ package routeros
 
 import (
 	"crypto/md5"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -56,6 +57,7 @@ type Client struct {
 	debug    bool     // debug logging enabled
 	ready    bool     // Ready for work (login ok and connection not terminated)
 	conn     net.Conn // Connection to pass around
+	TLSConfig *tls.Config
 }
 
 // Pair is a Key-Value pair for RouterOS Attribute, Query, and Reply words
@@ -101,13 +103,16 @@ func (c *Client) Close() {
 }
 
 func (c *Client) Connect(user string, password string) error {
-	conn, err := net.Dial("tcp", c.address)
+
+	var err error
+	if c.TLSConfig != nil {
+		c.conn, err = tls.Dial("tcp", c.address, c.TLSConfig)
+	} else {
+		c.conn, err = net.Dial("tcp", c.address)
+	}
 	if err != nil {
 		return err
 	}
-
-	// stash conn in instance
-	c.conn = conn
 
 	// try to log in
 	res, err := c.Call("/login", nil)
