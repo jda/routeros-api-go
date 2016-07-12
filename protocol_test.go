@@ -2,6 +2,7 @@ package routeros
 
 import (
 	"os"
+	"strconv"
 	"testing"
 )
 
@@ -109,7 +110,33 @@ func TestQuery(t *testing.T) {
 	}
 }
 
-// Test getting list of interfaces (multiple return items)
+// Test adding some bridges (test of Call)
+func TestCallAddBridges(t *testing.T) {
+	tv := PrepVars(t)
+	c, err := New(tv.Address)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = c.Connect(tv.Username, tv.Password)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 1; i <= 10; i++ {
+		var pairs []Pair
+		bName := "test-bridge" + strconv.Itoa(i)
+		pairs = append(pairs, Pair{Key: "name", Value: bName})
+		pairs = append(pairs, Pair{Key: "comment", Value: "test bridge number " + strconv.Itoa(i)})
+		pairs = append(pairs, Pair{Key: "arp", Value: "disabled"})
+		_, err = c.Call("/interface/bridge/add", pairs)
+		if err != nil {
+			t.Errorf("Error adding bridge: %s\n", err)
+		}
+	}
+}
+
+// Test getting list of interfaces (test Query)
 func TestQueryMultiple(t *testing.T) {
 	tv := PrepVars(t)
 	c, err := New(tv.Address)
@@ -119,7 +146,7 @@ func TestQueryMultiple(t *testing.T) {
 
 	err = c.Connect(tv.Username, tv.Password)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	var q Query
@@ -132,5 +159,66 @@ func TestQueryMultiple(t *testing.T) {
 	if len(res.SubPairs) <= 1 {
 		t.Error("Did not get multiple SubPairs from bridge interface query")
 	}
-	//t.Log(res)
+}
+
+// Test query with proplist
+func TestQueryWithProplist(t *testing.T) {
+	tv := PrepVars(t)
+	c, err := New(tv.Address)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = c.Connect(tv.Username, tv.Password)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var q Query
+	q.Proplist = append(q.Proplist, "name")
+	q.Proplist = append(q.Proplist, "comment")
+	q.Proplist = append(q.Proplist, ".id")
+	q.Pairs = append(q.Pairs, Pair{Key: "type", Value: "bridge", Op: "="})
+	res, err := c.Query("/interface/print", q)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, b := range res.SubPairs {
+		t.Logf("Found bridge %s (%s)\n", b["name"], b["comment"])
+
+	}
+}
+
+// Test query with proplist
+func TestCallRemoveBridges(t *testing.T) {
+	tv := PrepVars(t)
+	c, err := New(tv.Address)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = c.Connect(tv.Username, tv.Password)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var q Query
+	q.Proplist = append(q.Proplist, ".id")
+	q.Pairs = append(q.Pairs, Pair{Key: "type", Value: "bridge", Op: "="})
+	res, err := c.Query("/interface/print", q)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, v := range res.SubPairs {
+		var pairs []Pair
+		pairs = append(pairs, Pair{Key: ".id", Value: v[".id"]})
+		_, err = c.Call("/interface/bridge/remove", pairs)
+		if err != nil {
+			t.Errorf("error removing bridge: %s\n", err)
+		}
+
+	}
+
 }
