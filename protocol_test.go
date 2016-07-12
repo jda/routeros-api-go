@@ -46,12 +46,12 @@ func TestLogin(t *testing.T) {
 	tv := PrepVars(t)
 	c, err := New(tv.Address)
 	if err != nil {
-		t.Error(nil)
+		t.Fatal(err)
 	}
 
 	err = c.Connect(tv.Username, tv.Password)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 }
 
@@ -60,12 +60,12 @@ func TestCommand(t *testing.T) {
 	tv := PrepVars(t)
 	c, err := New(tv.Address)
 	if err != nil {
-		t.Error(nil)
+		t.Fatal(err)
 	}
 
 	err = c.Connect(tv.Username, tv.Password)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	res, err := c.Call("/system/resource/getall", nil)
@@ -82,12 +82,12 @@ func TestQuery(t *testing.T) {
 	tv := PrepVars(t)
 	c, err := New(tv.Address)
 	if err != nil {
-		t.Error(nil)
+		t.Fatal(err)
 	}
 
 	err = c.Connect(tv.Username, tv.Password)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	getEther1Addrs := NewPair("interface", "ether1")
@@ -114,7 +114,7 @@ func TestQueryMultiple(t *testing.T) {
 	tv := PrepVars(t)
 	c, err := New(tv.Address)
 	if err != nil {
-		t.Error(nil)
+		t.Fatal(err)
 	}
 
 	err = c.Connect(tv.Username, tv.Password)
