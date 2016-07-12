@@ -129,10 +129,11 @@ func TestCallAddBridges(t *testing.T) {
 		pairs = append(pairs, Pair{Key: "name", Value: bName})
 		pairs = append(pairs, Pair{Key: "comment", Value: "test bridge number " + strconv.Itoa(i)})
 		pairs = append(pairs, Pair{Key: "arp", Value: "disabled"})
-		_, err = c.Call("/interface/bridge/add", pairs)
+		res, err := c.Call("/interface/bridge/add", pairs)
 		if err != nil {
 			t.Errorf("Error adding bridge: %s\n", err)
 		}
+		t.Logf("reply from adding bridge: %+v\n", res)
 	}
 }
 
@@ -218,7 +219,53 @@ func TestCallRemoveBridges(t *testing.T) {
 		if err != nil {
 			t.Errorf("error removing bridge: %s\n", err)
 		}
+	}
+}
 
+// Test call that should trigger error response from router
+func TestCallCausesError(t *testing.T) {
+	tv := PrepVars(t)
+	c, err := New(tv.Address)
+	if err != nil {
+		t.Fatal(err)
 	}
 
+	err = c.Connect(tv.Username, tv.Password)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var pairs []Pair
+	pairs = append(pairs, Pair{Key: "address", Value: "192.168.99.1/32"})
+	pairs = append(pairs, Pair{Key: "comment", Value: "this address should never be added"})
+	pairs = append(pairs, Pair{Key: "interface", Value: "badbridge99"})
+	_, err = c.Call("/ip/address/add", pairs)
+	if err != nil {
+		t.Logf("Error adding address to nonexistent bridge: %s\n", err)
+	} else {
+		t.Error("did not get error when adding address to nonexistent bridge")
+	}
+}
+
+// Test query that should trigger error response from router
+func TestQueryCausesError(t *testing.T) {
+	tv := PrepVars(t)
+	c, err := New(tv.Address)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = c.Connect(tv.Username, tv.Password)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var q Query
+	q.Proplist = append(q.Proplist, ".id")
+	_, err = c.Query("/ip/address/sneeze", q)
+	if err != nil {
+		t.Logf("Error querying with nonexistent command: %s\n", err)
+	} else {
+		t.Error("did not get error when querying nonexistent command")
+	}
 }

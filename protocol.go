@@ -31,6 +31,7 @@ func (c *Client) receive() (Reply, error) {
 
 	re := false
 	done := false
+	trap := false
 	subReply := make(map[string]string, 1)
 	for {
 		length := c.getlen()
@@ -53,6 +54,11 @@ func (c *Client) receive() (Reply, error) {
 		word := string(inbuf)
 		if word == "!done" {
 			done = true
+			continue
+		}
+
+		if word == "!trap" { // error reply
+			trap = true
 			continue
 		}
 
@@ -93,6 +99,23 @@ func (c *Client) receive() (Reply, error) {
 
 	if len(subReply) > 0 {
 		reply.SubPairs = append(reply.SubPairs, subReply)
+	}
+
+	// if we got a error flag from routeros, look for a message and signal err
+	if trap {
+		trapMesasge := ""
+		for _, v := range reply.Pairs {
+			if v.Key == "message" {
+				trapMesasge = v.Value
+				continue
+			}
+		}
+
+		if trapMesasge == "" {
+			return reply, fmt.Errorf("routeros: unknown error")
+		} else {
+			return reply, fmt.Errorf("routeros: %s", trapMesasge)
+		}
 	}
 
 	return reply, nil
