@@ -1,4 +1,4 @@
-// Package routeros provides a programmatic interface to to the Mikrotik RouterOS API
+// Package routeros provides a programmatic interface to the Mikrotik RouterOS API
 package routeros
 
 import (
