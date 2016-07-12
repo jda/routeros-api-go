@@ -51,15 +51,9 @@ func (c *Client) receive() (reply Reply, err error) {
 		}
 
 		inbuf := make([]byte, length)
-		n, err := io.ReadAtLeast(c.conn, inbuf, int(length))
-		// We don't actually care about EOF, but things like ErrUnspectedEOF we would
-		if err != nil && err != io.EOF {
+		_, err := io.ReadFull(c.conn, inbuf)
+		if err != nil {
 			return reply, err
-		}
-
-		// be annoying about reading exactly the correct number of bytes
-		if int64(n) != length {
-			return reply, fmt.Errorf("incorrect number of bytes read")
 		}
 
 		word := string(inbuf)
