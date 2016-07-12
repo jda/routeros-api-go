@@ -123,14 +123,14 @@ func TestQueryMultiple(t *testing.T) {
 	}
 
 	var q Query
-	q.Pairs = append(q.Pairs, Pair{Key: "type", Value: "ether", Op: "="})
+	q.Pairs = append(q.Pairs, Pair{Key: "type", Value: "bridge", Op: "="})
 
 	res, err := c.Query("/interface/print", q)
 	if err != nil {
 		t.Error(err)
 	}
 	if len(res.SubPairs) <= 1 {
-		t.Error("Did not get multiple SubPairs from interface query")
+		t.Error("Did not get multiple SubPairs from bridge interface query")
 	}
 	//t.Log(res)
 }
