@@ -9,6 +9,8 @@ import (
 	"io"
 	"net"
 	"strings"
+
+	"github.com/Netwurx/routeros-api-go/sentence"
 )
 
 // A reply can contain multiple pairs. A pair is a string key->value.
@@ -51,13 +53,14 @@ func GetPairVal(pairs []Pair, key string) (string, error) {
 type Client struct {
 	// Network Address.
 	// E.g. "10.0.0.1:8728" or "router.example.com:8728"
-	address  string
-	user     string
-	password string
-	debug    bool     // debug logging enabled
-	ready    bool     // Ready for work (login ok and connection not terminated)
-	conn     net.Conn // Connection to pass around
-	TLSConfig *tls.Config
+	address        string
+	user           string
+	password       string
+	debug          bool     // debug logging enabled
+	ready          bool     // Ready for work (login ok and connection not terminated)
+	conn           net.Conn // Connection to pass around
+	sentenceReader sentence.Reader
+	TLSConfig      *tls.Config
 }
 
 // Pair is a Key-Value pair for RouterOS Attribute, Query, and Reply words
@@ -113,6 +116,7 @@ func (c *Client) Connect(user string, password string) error {
 	if err != nil {
 		return err
 	}
+	c.sentenceReader = sentence.NewReader(c.conn)
 
 	// try to log in
 	res, err := c.Call("/login", nil)
@@ -151,10 +155,10 @@ func (c *Client) Connect(user string, password string) error {
 	return nil
 }
 
-func (c *Client) Query(command string, q Query) (Reply, error) {
+func (c *Client) Query(command string, q Query) (*Reply, error) {
 	err := c.send(command)
 	if err != nil {
-		return Reply{}, err
+		return nil, err
 	}
 
 	// Set property list if present
@@ -162,7 +166,7 @@ func (c *Client) Query(command string, q Query) (Reply, error) {
 		proplist := fmt.Sprintf("=.proplist=%s", strings.Join(q.Proplist, ","))
 		err = c.send(proplist)
 		if err != nil {
-			return Reply{}, err
+			return nil, err
 		}
 	}
 
@@ -182,21 +186,21 @@ func (c *Client) Query(command string, q Query) (Reply, error) {
 	// send terminator
 	err = c.send("")
 	if err != nil {
-		return Reply{}, err
+		return nil, err
 	}
 
 	res, err := c.receive()
 	if err != nil {
-		return Reply{}, err
+		return nil, err
 	}
 
 	return res, nil
 }
 
-func (c *Client) Call(command string, params []Pair) (Reply, error) {
+func (c *Client) Call(command string, params []Pair) (*Reply, error) {
 	err := c.send(command)
 	if err != nil {
-		return Reply{}, err
+		return nil, err
 	}
 
 	// send params if we got them
@@ -210,12 +214,12 @@ func (c *Client) Call(command string, params []Pair) (Reply, error) {
 	// send terminator
 	err = c.send("")
 	if err != nil {
-		return Reply{}, err
+		return nil, err
 	}
 
 	res, err := c.receive()
 	if err != nil {
-		return Reply{}, err
+		return nil, err
 	}
 
 	return res, nil

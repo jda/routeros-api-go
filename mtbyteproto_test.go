@@ -37,36 +37,6 @@ func (c *testConn) Read(b []byte) (int, error)      { return c.readBuf.Read(b) }
 func (testConn) Write(b []byte) (int, error)        { return 0, nil }
 func (testConn) Close() error                       { return nil }
 
-// Test Client.getlen decodings
-func TestGetlen(t *testing.T) {
-	c := &testConn{readBuf: *bytes.NewBuffer(mtCodingSize1)}
-	mc := &Client{conn: c}
-	len := mc.getlen()
-	if len != mtCodingValue1 || c.readBuf.Len() != 0 {
-		t.Errorf("single byte read failed, got %#08x", len)
-	}
-	c.readBuf = *bytes.NewBuffer(mtCodingSize2)
-	len = mc.getlen()
-	if len != mtCodingValue2 || c.readBuf.Len() != 0 {
-		t.Errorf("double byte read failed, got %#08x", len)
-	}
-	c.readBuf = *bytes.NewBuffer(mtCodingSize3)
-	len = mc.getlen()
-	if len != mtCodingValue3 || c.readBuf.Len() != 0 {
-		t.Errorf("triple byte read failed, got %#08x", len)
-	}
-	c.readBuf = *bytes.NewBuffer(mtCodingSize4)
-	len = mc.getlen()
-	if len != mtCodingValue4 || c.readBuf.Len() != 0 {
-		t.Errorf("quad byte read failed, got %#08x", len)
-	}
-	c.readBuf = *bytes.NewBuffer(mtCodingSize5)
-	len = mc.getlen()
-	if len != mtCodingValue5 || c.readBuf.Len() != 0 {
-		t.Errorf("penta byte read failed, got %#08x", len)
-	}
-}
-
 // Test prefixlen encodings
 func TestPrefixLen(t *testing.T) {
 	b := prefixlen(mtCodingValue1).Bytes()
