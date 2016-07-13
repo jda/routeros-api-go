@@ -13,6 +13,10 @@ import (
 	"github.com/Netwurx/routeros-api-go/sentence"
 )
 
+var (
+	ErrKeyNotFound = errors.New("key not found")
+)
+
 // A reply can contain multiple pairs. A pair is a string key->value.
 // A reply can also contain subpairs, that is, a array of pair arrays.
 type Reply struct {
@@ -21,12 +25,7 @@ type Reply struct {
 }
 
 func (r *Reply) GetPairVal(key string) (string, error) {
-	for _, p := range r.Pairs {
-		if p.Key == key {
-			return p.Value, nil
-		}
-	}
-	return "", errors.New("key not found")
+	return GetPairVal(r.Pairs, key)
 }
 
 func (r *Reply) GetSubPairByName(key string) (map[string]string, error) {
@@ -37,7 +36,7 @@ func (r *Reply) GetSubPairByName(key string) (map[string]string, error) {
 			}
 		}
 	}
-	return nil, errors.New("key not found")
+	return nil, ErrKeyNotFound
 }
 
 func GetPairVal(pairs []Pair, key string) (string, error) {
@@ -46,7 +45,7 @@ func GetPairVal(pairs []Pair, key string) (string, error) {
 			return p.Value, nil
 		}
 	}
-	return "", errors.New("key not found")
+	return "", ErrKeyNotFound
 }
 
 // Client is a RouterOS API client.

@@ -50,7 +50,7 @@ func (reply *Reply) addSubPairs(sentence [][]byte) {
 
 func (reply *Reply) errorFrom(sentence [][]byte) string {
 	reply.addPairs(sentence)
-	m, err := GetPairVal(reply.Pairs, "message")
+	m, err := reply.GetPairVal("message")
 	if err != nil || m == "" {
 		return fmt.Sprintf("Unknown error: %v", sentence)
 	}
