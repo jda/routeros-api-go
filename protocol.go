@@ -6,24 +6,6 @@ import (
 	"fmt"
 )
 
-// Encode and send a single line
-func (c *Client) send(word string) error {
-	bword := []byte(word)
-	prefix := prefixlen(len(bword))
-
-	_, err := c.conn.Write(prefix.Bytes())
-	if err != nil {
-		return err
-	}
-
-	_, err = c.conn.Write(bword)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // Get reply
 func (c *Client) receive() (*Reply, error) {
 	reply := &Reply{}

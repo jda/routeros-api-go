@@ -60,6 +60,7 @@ type Client struct {
 	ready          bool     // Ready for work (login ok and connection not terminated)
 	conn           net.Conn // Connection to pass around
 	sentenceReader sentence.Reader
+	sentenceWriter sentence.Writer
 	TLSConfig      *tls.Config
 }
 
@@ -117,6 +118,7 @@ func (c *Client) Connect(user string, password string) error {
 		return err
 	}
 	c.sentenceReader = sentence.NewReader(c.conn)
+	c.sentenceWriter = sentence.NewWriter(c.conn)
 
 	// try to log in
 	res, err := c.Call("/login", nil)
@@ -156,37 +158,32 @@ func (c *Client) Connect(user string, password string) error {
 }
 
 func (c *Client) Query(command string, q Query) (*Reply, error) {
-	err := c.send(command)
-	if err != nil {
-		return nil, err
-	}
+	w := c.sentenceWriter
+	w.WriteString(command)
 
 	// Set property list if present
 	if len(q.Proplist) > 0 {
 		proplist := fmt.Sprintf("=.proplist=%s", strings.Join(q.Proplist, ","))
-		err = c.send(proplist)
-		if err != nil {
-			return nil, err
-		}
+		w.WriteString(proplist)
 	}
 
 	// send params if we got them
 	if len(q.Pairs) > 0 {
 		for _, v := range q.Pairs {
 			word := fmt.Sprintf("?%s%s=%s", v.Op, v.Key, v.Value)
-			c.send(word)
+			w.WriteString(word)
 		}
 
 		if q.Op != "" {
 			word := fmt.Sprintf("?#%s", q.Op)
-			c.send(word)
+			w.WriteString(word)
 		}
 	}
 
 	// send terminator
-	err = c.send("")
-	if err != nil {
-		return nil, err
+	w.WriteString("")
+	if w.Err() != nil {
+		return nil, w.Err()
 	}
 
 	res, err := c.receive()
@@ -198,23 +195,21 @@ func (c *Client) Query(command string, q Query) (*Reply, error) {
 }
 
 func (c *Client) Call(command string, params []Pair) (*Reply, error) {
-	err := c.send(command)
-	if err != nil {
-		return nil, err
-	}
+	w := c.sentenceWriter
+	w.WriteString(command)
 
 	// send params if we got them
 	if len(params) > 0 {
 		for _, v := range params {
 			word := fmt.Sprintf("=%s=%s", v.Key, v.Value)
-			c.send(word)
+			w.WriteString(word)
 		}
 	}
 
 	// send terminator
-	err = c.send("")
-	if err != nil {
-		return nil, err
+	w.WriteString("")
+	if w.Err() != nil {
+		return nil, w.Err()
 	}
 
 	res, err := c.receive()

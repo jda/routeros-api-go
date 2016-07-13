@@ -2,7 +2,7 @@ package sentence
 
 import "io"
 
-// Reader reads Mikrotik tokens from another reader.
+// Reader reads RouterOS tokens from another reader.
 type Reader interface {
 	ReadSentence() ([][]byte, error)
 }
@@ -16,7 +16,7 @@ func NewReader(r io.Reader) Reader {
 	return &reader{r}
 }
 
-// ReadSentence reads a Mikrotik sentence. It returns a list of words.
+// ReadSentence reads a RouterOS sentence. It returns a list of words.
 func (r *reader) ReadSentence() ([][]byte, error) {
 	var words [][]byte
 	for {
