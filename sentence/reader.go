@@ -1,10 +1,14 @@
 package sentence
 
-import "io"
+import (
+	"bytes"
+	"fmt"
+	"io"
+)
 
 // Reader reads RouterOS tokens from another reader.
 type Reader interface {
-	ReadSentence() ([][]byte, error)
+	ReadSentence() (*Sentence, error)
 }
 
 type reader struct {
@@ -17,17 +21,38 @@ func NewReader(r io.Reader) Reader {
 }
 
 // ReadSentence reads a RouterOS sentence. It returns a list of words.
-func (r *reader) ReadSentence() ([][]byte, error) {
-	var words [][]byte
+func (r *reader) ReadSentence() (*Sentence, error) {
+	sen := NewSentence()
 	for {
 		b, err := r.readWord()
 		if err != nil {
 			return nil, err
 		}
 		if len(b) == 0 {
-			return words, nil
+			return sen, nil
 		}
-		words = append(words, b)
+		// Ex.: !re, !done
+		if sen.Word == "" {
+			sen.Word = string(b)
+			continue
+		}
+		// Command tag.
+		if bytes.HasPrefix(b, []byte(".tag=")) {
+			sen.Tag = string(b[5:])
+			continue
+		}
+		// Ex.: =key=value, =key
+		if bytes.HasPrefix(b, []byte("=")) {
+			t := bytes.SplitN(b[1:], []byte("="), 2)
+			if len(t) == 1 {
+				t = append(t, []byte{})
+			}
+			p := Pair{string(t[0]), string(t[1])}
+			sen.List = append(sen.List, p)
+			sen.Map[p.Key] = p.Value
+			continue
+		}
+		return nil, fmt.Errorf("invalid RouterOS sentence word: %#q", b)
 	}
 }
 

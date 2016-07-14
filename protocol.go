@@ -2,88 +2,51 @@
 package routeros
 
 import (
-	"bytes"
 	"fmt"
+
+	"joi.com.br/mikrotik-go/sentence"
 )
 
 // Get reply
-func (c *Client) receive() (*Reply, error) {
+func (c *Client) readReply() (*Reply, error) {
 	reply := &Reply{}
 	for {
 		s, err := c.sentenceReader.ReadSentence()
 		if err != nil {
 			return nil, err
 		}
-		if len(s) == 0 {
-			continue // API docs say that empty sentences should be ignored
-		}
-		switch string(s[0]) {
+		switch s.Word {
 		case "!done":
-			reply.addPairs(s[1:])
+			reply.Done = s
 			return reply, nil
 		case "!trap", "!fatal":
-			return nil, reply.errorFrom(s)
+			return nil, &DeviceError{s}
 		case "!re":
-			reply.addSubPairs(s[1:])
+			reply.Re = append(reply.Re, s)
+		case "":
+			// API docs say that empty sentences should be ignored
 		default:
-			return nil, &UnknownReplyError{s[0]}
+			return nil, &UnknownReplyError{s}
 		}
 	}
 }
 
 type UnknownReplyError struct {
-	Word []byte
+	Sentence *sentence.Sentence
 }
 
 func (err *UnknownReplyError) Error() string {
-	return fmt.Sprintf("unknown RouterOS reply word: %s", err.Word)
-}
-
-func (reply *Reply) addPairs(sentence [][]byte) {
-	for _, pair := range splitPairs(sentence) {
-		reply.Pairs = append(reply.Pairs, Pair{
-			Key:   pair[0],
-			Value: pair[1],
-		})
-	}
-}
-
-func (reply *Reply) addSubPairs(sentence [][]byte) {
-	pairs := make(map[string]string)
-	for _, pair := range splitPairs(sentence) {
-		pairs[pair[0]] = pair[1]
-	}
-	reply.SubPairs = append(reply.SubPairs, pairs)
+	return fmt.Sprintf("unknown RouterOS reply word: %s", err.Sentence.Word)
 }
 
 type DeviceError struct {
-	Message string
+	Trap *sentence.Sentence
 }
 
 func (err *DeviceError) Error() string {
-	return fmt.Sprintf("RouterOS: %s", err.Message)
-}
-
-func (reply *Reply) errorFrom(sentence [][]byte) error {
-	reply.addPairs(sentence)
-	m, err := reply.GetPairVal("message")
-	if err != nil || m == "" {
-		m = fmt.Sprintf("unknown: %q", sentence)
+	m := err.Trap.Map["message"]
+	if m == "" {
+		m = fmt.Sprintf("unknown: %s", err.Trap)
 	}
-	return &DeviceError{m}
-}
-
-func splitPairs(sentence [][]byte) [][]string {
-	var pairs [][]string
-	for _, word := range sentence {
-		if bytes.HasPrefix(word, []byte("=")) {
-			t := bytes.SplitN(word[1:], []byte("="), 2)
-			if len(t) == 2 {
-				pairs = append(pairs, []string{string(t[0]), string(t[1])})
-			} else {
-				pairs = append(pairs, []string{string(t[0]), ""})
-			}
-		}
-	}
-	return pairs
+	return fmt.Sprintf("RouterOS: %s", m)
 }

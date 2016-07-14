@@ -1,6 +1,7 @@
 package routeros
 
 import (
+	"bytes"
 	"crypto/md5"
 	"crypto/tls"
 	"encoding/hex"
@@ -9,8 +10,9 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 
-	"github.com/Netwurx/routeros-api-go/sentence"
+	"joi.com.br/mikrotik-go/sentence"
 )
 
 var (
@@ -20,47 +22,30 @@ var (
 // A reply can contain multiple pairs. A pair is a string key->value.
 // A reply can also contain subpairs, that is, a array of pair arrays.
 type Reply struct {
-	Pairs    []Pair
-	SubPairs []map[string]string
+	Re   []*sentence.Sentence
+	Done *sentence.Sentence
 }
 
-func (r *Reply) GetPairVal(key string) (string, error) {
-	return GetPairVal(r.Pairs, key)
-}
-
-func (r *Reply) GetSubPairByName(key string) (map[string]string, error) {
-	for _, p := range r.SubPairs {
-		if _, ok := p["name"]; ok {
-			if p["name"] == key {
-				return p, nil
-			}
-		}
+func (r *Reply) String() string {
+	b := &bytes.Buffer{}
+	for _, re := range r.Re {
+		fmt.Fprintf(b, "%s\n", re)
 	}
-	return nil, ErrKeyNotFound
-}
-
-func GetPairVal(pairs []Pair, key string) (string, error) {
-	for _, p := range pairs {
-		if p.Key == key {
-			return p.Value, nil
-		}
-	}
-	return "", ErrKeyNotFound
+	fmt.Fprintf(b, "%s", r.Done)
+	return b.String()
 }
 
 // Client is a RouterOS API client.
 type Client struct {
-	// Network Address.
-	// E.g. "10.0.0.1:8728" or "router.example.com:8728"
-	address        string
-	user           string
-	password       string
-	debug          bool     // debug logging enabled
-	ready          bool     // Ready for work (login ok and connection not terminated)
-	conn           net.Conn // Connection to pass around
+	Address        string
+	Username       string
+	Password       string
+	TLSConfig      *tls.Config
+	async          bool
+	conn           net.Conn
 	sentenceReader sentence.Reader
 	sentenceWriter sentence.Writer
-	TLSConfig      *tls.Config
+	mu             sync.Mutex
 }
 
 // Pair is a Key-Value pair for RouterOS Attribute, Query, and Reply words
@@ -80,38 +65,16 @@ type Query struct {
 	Proplist []string
 }
 
-func NewPair(key string, value string) *Pair {
-	p := new(Pair)
-	p.Key = key
-	p.Value = value
-	return p
-}
-
-// Create a new instance of the RouterOS API client
-func New(address string) (*Client, error) {
-	// basic validation of host address
-	_, _, err := net.SplitHostPort(address)
-	if err != nil {
-		return nil, err
-	}
-
-	var c Client
-	c.address = address
-
-	return &c, nil
-}
-
 func (c *Client) Close() {
 	c.conn.Close()
 }
 
-func (c *Client) Connect(user string, password string) error {
-
+func (c *Client) Connect() error {
 	var err error
 	if c.TLSConfig != nil {
-		c.conn, err = tls.Dial("tcp", c.address, c.TLSConfig)
+		c.conn, err = tls.Dial("tcp", c.Address, c.TLSConfig)
 	} else {
-		c.conn, err = net.Dial("tcp", c.address)
+		c.conn, err = net.Dial("tcp", c.Address)
 	}
 	if err != nil {
 		return err
@@ -126,8 +89,8 @@ func (c *Client) Connect(user string, password string) error {
 	}
 
 	// handle challenge/response
-	challengeEnc, err := res.GetPairVal("ret")
-	if err != nil {
+	challengeEnc, ok := res.Done.Map["ret"]
+	if !ok {
 		return errors.New("Didn't get challenge from ROS")
 	}
 	challenge, err := hex.DecodeString(challengeEnc)
@@ -136,27 +99,30 @@ func (c *Client) Connect(user string, password string) error {
 	}
 	h := md5.New()
 	io.WriteString(h, "\000")
-	io.WriteString(h, password)
+	io.WriteString(h, c.Password)
 	h.Write(challenge)
 	resp := fmt.Sprintf("00%x", h.Sum(nil))
-	var loginParams []Pair
-	loginParams = append(loginParams, *NewPair("name", user))
-	loginParams = append(loginParams, *NewPair("response", resp))
 
 	// try to log in again with challenge/response
-	res, err = c.Call("/login", loginParams)
+	res, err = c.Call("/login", []Pair{
+		{Key: "name", Value: c.Username},
+		{Key: "response", Value: resp},
+	})
 	if err != nil {
 		return err
 	}
 
-	if len(res.Pairs) > 0 {
-		return fmt.Errorf("Unexpected result on login: %+v", res)
+	if len(res.Done.List) > 0 {
+		return fmt.Errorf("Unexpected result on login: %#q", res.Done.List)
 	}
 
 	return nil
 }
 
 func (c *Client) Query(command string, q Query) (*Reply, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	w := c.sentenceWriter
 	w.WriteString(command)
 
@@ -185,7 +151,7 @@ func (c *Client) Query(command string, q Query) (*Reply, error) {
 		return nil, w.Err()
 	}
 
-	res, err := c.receive()
+	res, err := c.readReply()
 	if err != nil {
 		return nil, err
 	}
@@ -194,6 +160,9 @@ func (c *Client) Query(command string, q Query) (*Reply, error) {
 }
 
 func (c *Client) Call(command string, params []Pair) (*Reply, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	w := c.sentenceWriter
 	w.WriteString(command)
 
@@ -211,10 +180,24 @@ func (c *Client) Call(command string, params []Pair) (*Reply, error) {
 		return nil, w.Err()
 	}
 
-	res, err := c.receive()
+	res, err := c.readReply()
 	if err != nil {
 		return nil, err
 	}
 
 	return res, nil
+}
+
+// Loop starts asynchronous mode.
+func (c *Client) Loop() error {
+	c.async = true
+	defer func() { c.async = false }()
+
+	for {
+		reply, err := c.readReply()
+		if err != nil {
+			return err
+		}
+		_ = reply
+	}
 }

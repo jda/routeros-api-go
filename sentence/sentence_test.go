@@ -2,34 +2,41 @@ package sentence
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 )
 
 func TestReadWrite(t *testing.T) {
-	for _, d := range []struct {
-		sentence []string
+	for i, test := range []struct {
+		in  []string
+		out string
+		tag string
 	}{
-		{[]string{"Hi"}},
-		{strings.Split("a b c d e f", " ")},
+		{[]string{"!done"}, `[]`, ""},
+		{[]string{"!done", ".tag=abc123"}, `[]`, "abc123"},
+		{strings.Split("!re =tx-byte=123456789 =only-key", " "), "[{`tx-byte` `123456789`} {`only-key` ``}]", ""},
 	} {
 		buf := &bytes.Buffer{}
 		// Write sentence into buf.
 		w := NewWriter(buf)
-		for _, word := range d.sentence {
+		for _, word := range test.in {
 			w.WriteString(word)
 		}
 		w.WriteString("")
 		// Read sentence from buf.
 		r := NewReader(buf)
-		s, _ := r.ReadSentence()
-		if len(s) != len(d.sentence) {
-			t.Fatalf("Expected sentence with %d words, got %d", len(d.sentence), len(s))
+		sen, err := r.ReadSentence()
+		if err != nil {
+			t.Errorf("#%d: Input(%#q)=%#v", i, test.in, err)
+			continue
 		}
-		for i, word := range d.sentence {
-			if word != string(s[i]) {
-				t.Fatalf("Expected word %s at index %d, got %s", word, i, s[i])
-			}
+		x := fmt.Sprintf("%#q", sen.List)
+		if x != test.out {
+			t.Errorf("#%d: Input(%#q)=%s; want %s", i, test.in, x, test.out)
+		}
+		if sen.Tag != test.tag {
+			t.Errorf("#%d: Input(%#q)=%s; want %s", i, test.in, sen.Tag, test.tag)
 		}
 	}
 }
