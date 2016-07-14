@@ -307,73 +307,81 @@ func TestReceive(t *testing.T) {
 		return l
 	}
 	// Valid replies.
-	for _, d := range []struct {
-		sentences [][][]byte
-		expected  string
+	for i, test := range []struct {
+		in  [][][]byte
+		out string
 	}{
 		{r(s("!done")), `&{[] []}`},
+		{r(s(), s("!done")), `&{[] []}`},
 		{r(s("!done", "=name")), `&{[{name  }] []}`},
 		{r(s("!done", "=ret=abc123")), `&{[{ret abc123 }] []}`},
 		{r(s("!re", "=name=value"), s("!done")), "&{[] [map[name:value]]}"},
 	} {
-		c := newSentenceTester(d.sentences)
+		c := newSentenceTester(test.in)
 		reply, err := c.receive()
 		if err != nil {
-			t.Fatal(err)
+			t.Errorf("#%d: Input(%#q)=%#v", i, test.in, err)
+			continue
 		}
-		got := fmt.Sprintf("%v", reply)
-		if got != d.expected {
-			t.Fatalf("Expected %s, got %s", d.expected, got)
+		x := fmt.Sprintf("%v", reply)
+		if x != test.out {
+			t.Errorf("#%d: Input(%#q)=%#q; want %#q", i, test.in, x, test.out)
 		}
 	}
 	// Must return EOF.
-	for _, d := range []struct {
-		sentences [][][]byte
-		expected  string
+	for i, test := range []struct {
+		in [][][]byte
 	}{
-		{r(), `&{[] []}`},
-		{r(s("!re", "=name=value")), "&{[] [map[name:value]]}"},
+		{r()},
+		{r(s())},
+		{r(s("!re", "=name=value"))},
 	} {
-		c := newSentenceTester(d.sentences)
+		c := newSentenceTester(test.in)
 		_, err := c.receive()
 		if err != io.EOF {
-			t.Fatalf("Expected EOF for input %q, got %#v", d.sentences, err)
+			t.Errorf("#%d: Input(%#q)=%s; want EOF", i, test.in, err)
 		}
 	}
 	// Must return ErrUnknownReply.
-	for _, d := range []struct {
-		sentences [][][]byte
-		expected  string
+	for i, test := range []struct {
+		in  [][][]byte
+		out string
 	}{
 		{r(s("=name")), `unknown RouterOS reply word: =name`},
 		{r(s("=ret=abc123")), `unknown RouterOS reply word: =ret=abc123`},
 	} {
-		c := newSentenceTester(d.sentences)
+		c := newSentenceTester(test.in)
 		_, err := c.receive()
 		_, ok := err.(*UnknownReplyError)
 		if !ok {
-			t.Fatalf("Expected error for input %q, got %#v", d.sentences, err)
+			t.Errorf("#%d: Input(%#q)=%T; want *UnknownReplyError", i, test.in, err)
+			continue
 		}
-		if err.Error() != d.expected {
-			t.Fatalf("Expected error %s, got %s", d.expected, err)
+		x := err.Error()
+		if x != test.out {
+			t.Errorf("#%d: Input(%#q)=%#q; want %#q", i, test.in, x, test.out)
 		}
 	}
 	// Must return ErrFromDevice.
-	for _, d := range []struct {
-		sentences [][][]byte
-		expected  string
+	for i, test := range []struct {
+		in  [][][]byte
+		out string
 	}{
 		{r(s("!trap")), `RouterOS: unknown: ["!trap"]`},
 		{r(s("!trap", "=message=abc123")), `RouterOS: abc123`},
+		{r(s("!fatal")), `RouterOS: unknown: ["!fatal"]`},
+		{r(s("!fatal", "=message=abc123")), `RouterOS: abc123`},
 	} {
-		c := newSentenceTester(d.sentences)
+		c := newSentenceTester(test.in)
 		_, err := c.receive()
 		_, ok := err.(*DeviceError)
 		if !ok {
-			t.Fatalf("Expected error for input %q, got %#v", d.sentences, err)
+			t.Errorf("#%d: Input(%#q)=%T; want *DeviceError", i, test.in, err)
+			continue
 		}
-		if err.Error() != d.expected {
-			t.Fatalf("Expected error %s, got %s", d.expected, err)
+		x := err.Error()
+		if x != test.out {
+			t.Errorf("#%d: Input(%#q)=%#q; want %#q", i, test.in, x, test.out)
 		}
 	}
 }
