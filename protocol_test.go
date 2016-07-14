@@ -1,6 +1,8 @@
 package routeros
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"testing"
@@ -267,5 +269,111 @@ func TestQueryCausesError(t *testing.T) {
 		t.Logf("Error querying with nonexistent command: %s\n", err)
 	} else {
 		t.Error("did not get error when querying nonexistent command")
+	}
+}
+
+type sentenceTester struct {
+	sentences [][][]byte
+}
+
+func newSentenceTester(sentences [][][]byte) *Client {
+	return &Client{sentenceReader: &sentenceTester{sentences}}
+}
+
+func (p *sentenceTester) ReadSentence() ([][]byte, error) {
+	if len(p.sentences) == 0 {
+		return nil, io.EOF
+	}
+	s := p.sentences[0]
+	p.sentences = p.sentences[1:]
+	return s, nil
+}
+
+func TestReceive(t *testing.T) {
+	// Return a list of sentences.
+	r := func(sentences ...[][]byte) [][][]byte {
+		l := make([][][]byte, len(sentences))
+		for i, s := range sentences {
+			l[i] = s
+		}
+		return l
+	}
+	// Return one sentence.
+	s := func(words ...string) [][]byte {
+		l := make([][]byte, len(words))
+		for i, w := range words {
+			l[i] = []byte(w)
+		}
+		return l
+	}
+	// Valid replies.
+	for _, d := range []struct {
+		sentences [][][]byte
+		expected  string
+	}{
+		{r(s("!done")), `&{[] []}`},
+		{r(s("!done", "=name")), `&{[{name  }] []}`},
+		{r(s("!done", "=ret=abc123")), `&{[{ret abc123 }] []}`},
+		{r(s("!re", "=name=value"), s("!done")), "&{[] [map[name:value]]}"},
+	} {
+		c := newSentenceTester(d.sentences)
+		reply, err := c.receive()
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := fmt.Sprintf("%v", reply)
+		if got != d.expected {
+			t.Fatalf("Expected %s, got %s", d.expected, got)
+		}
+	}
+	// Must return EOF.
+	for _, d := range []struct {
+		sentences [][][]byte
+		expected  string
+	}{
+		{r(), `&{[] []}`},
+		{r(s("!re", "=name=value")), "&{[] [map[name:value]]}"},
+	} {
+		c := newSentenceTester(d.sentences)
+		_, err := c.receive()
+		if err != io.EOF {
+			t.Fatalf("Expected EOF for input %q, got %#v", d.sentences, err)
+		}
+	}
+	// Must return ErrUnknownReply.
+	for _, d := range []struct {
+		sentences [][][]byte
+		expected  string
+	}{
+		{r(s("=name")), `unknown RouterOS reply word: =name`},
+		{r(s("=ret=abc123")), `unknown RouterOS reply word: =ret=abc123`},
+	} {
+		c := newSentenceTester(d.sentences)
+		_, err := c.receive()
+		_, ok := err.(*UnknownReplyError)
+		if !ok {
+			t.Fatalf("Expected error for input %q, got %#v", d.sentences, err)
+		}
+		if err.Error() != d.expected {
+			t.Fatalf("Expected error %s, got %s", d.expected, err)
+		}
+	}
+	// Must return ErrFromDevice.
+	for _, d := range []struct {
+		sentences [][][]byte
+		expected  string
+	}{
+		{r(s("!trap")), `RouterOS: unknown: ["!trap"]`},
+		{r(s("!trap", "=message=abc123")), `RouterOS: abc123`},
+	} {
+		c := newSentenceTester(d.sentences)
+		_, err := c.receive()
+		_, ok := err.(*DeviceError)
+		if !ok {
+			t.Fatalf("Expected error for input %q, got %#v", d.sentences, err)
+		}
+		if err.Error() != d.expected {
+			t.Fatalf("Expected error %s, got %s", d.expected, err)
+		}
 	}
 }
