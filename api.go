@@ -19,8 +19,7 @@ var (
 	ErrKeyNotFound = errors.New("key not found")
 )
 
-// A reply can contain multiple pairs. A pair is a string key->value.
-// A reply can also contain subpairs, that is, a array of pair arrays.
+// Reply has all lines from a reply. They must all have the same .tag value.
 type Reply struct {
 	Re   []*sentence.Sentence
 	Done *sentence.Sentence
@@ -35,17 +34,26 @@ func (r *Reply) String() string {
 	return b.String()
 }
 
+type AsyncReply struct {
+	*Reply
+	Tag string
+	Err error
+	C   chan struct{}
+}
+
 // Client is a RouterOS API client.
 type Client struct {
 	Address        string
 	Username       string
 	Password       string
 	TLSConfig      *tls.Config
-	async          bool
 	conn           net.Conn
 	sentenceReader sentence.Reader
 	sentenceWriter sentence.Writer
-	mu             sync.Mutex
+	async          bool
+	nextTag        int64
+	tags           map[string]*AsyncReply
+	sync.Mutex
 }
 
 // Pair is a Key-Value pair for RouterOS Attribute, Query, and Reply words
@@ -120,8 +128,8 @@ func (c *Client) Connect() error {
 }
 
 func (c *Client) Query(command string, q Query) (*Reply, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
 	w := c.sentenceWriter
 	w.WriteString(command)
@@ -145,23 +153,12 @@ func (c *Client) Query(command string, q Query) (*Reply, error) {
 		}
 	}
 
-	// send terminator
-	w.WriteString("")
-	if w.Err() != nil {
-		return nil, w.Err()
-	}
-
-	res, err := c.readReply()
-	if err != nil {
-		return nil, err
-	}
-
-	return res, nil
+	return c.endCommand()
 }
 
 func (c *Client) Call(command string, params []Pair) (*Reply, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
 	w := c.sentenceWriter
 	w.WriteString(command)
@@ -174,30 +171,56 @@ func (c *Client) Call(command string, params []Pair) (*Reply, error) {
 		}
 	}
 
-	// send terminator
+	return c.endCommand()
+}
+
+func (c *Client) endCommand() (*Reply, error) {
+	if c.async {
+		return c.endCommandAsync()
+	}
+	return c.endCommandSync()
+}
+
+func (c *Client) endCommandSync() (*Reply, error) {
+	w := c.sentenceWriter
 	w.WriteString("")
 	if w.Err() != nil {
 		return nil, w.Err()
 	}
-
-	res, err := c.readReply()
-	if err != nil {
-		return nil, err
-	}
-
-	return res, nil
+	return c.readReply()
 }
 
-// Loop starts asynchronous mode.
-func (c *Client) Loop() error {
-	c.async = true
-	defer func() { c.async = false }()
-
-	for {
-		reply, err := c.readReply()
-		if err != nil {
-			return err
-		}
-		_ = reply
+func (c *Client) endCommandAsync() (*Reply, error) {
+	a := c.newAsyncReply()
+	w := c.sentenceWriter
+	w.WriteString(fmt.Sprintf(".tag=%s", a.Tag))
+	c.Lock()
+	w.WriteString("")
+	if w.Err() != nil {
+		c.Unlock()
+		return nil, w.Err()
 	}
+	c.addAsyncReply(a)
+	c.Unlock()
+	<-a.C
+	return a.Reply, a.Err
+}
+
+func (c *Client) newAsyncReply() *AsyncReply {
+	c.nextTag++
+	return &AsyncReply{
+		Reply: &Reply{},
+		Tag:   fmt.Sprintf("%d", c.nextTag),
+		C:     make(chan struct{}),
+	}
+}
+
+func (c *Client) addAsyncReply(a *AsyncReply) {
+	go func() {
+		<-a.C
+		c.Lock()
+		delete(c.tags, a.Tag)
+		c.Unlock()
+	}()
+	c.tags[a.Tag] = a
 }

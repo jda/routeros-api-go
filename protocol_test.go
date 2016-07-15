@@ -72,15 +72,57 @@ func TestCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	res, err := c.Call("/system/resource/getall", nil)
 	if err != nil {
 		t.Error(err)
 	}
-
 	uptime := res.Re[0].Map["uptime"]
 	t.Logf("Uptime: %s\n", uptime)
 }
+
+func TestCommandAsyncA(t *testing.T) {
+	tv := PrepVars(t)
+	c := &Client{
+		Address:  tv.Address,
+		Username: tv.Username,
+		Password: tv.Password,
+	}
+	err := c.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	go c.Loop()
+	res, err := c.Call("/system/resource/getall", nil)
+	if err != nil {
+		t.Error(err)
+	}
+	uptime := res.Re[0].Map["uptime"]
+	t.Logf("Uptime: %s\n", uptime)
+}
+
+// func TestCommandAsyncB(t *testing.T) {
+// 	tv := PrepVars(t)
+// 	c := &Client{
+// 		Address:  tv.Address,
+// 		Username: tv.Username,
+// 		Password: tv.Password,
+// 	}
+// 	err := c.Connect()
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 	go func() {
+// 		defer c.Close()
+// 		res, err := c.Call("/system/resource/getall", nil)
+// 		if err != nil {
+// 			t.Error(err)
+// 		}
+// 		uptime := res.Re[0].Map["uptime"]
+// 		t.Logf("Uptime: %s\n", uptime)
+// 	}()
+// 	c.Loop()
+// }
 
 // Test querying data (getting IP addresses on ether1)
 func TestQuery(t *testing.T) {
