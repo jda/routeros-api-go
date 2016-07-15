@@ -1,34 +1,52 @@
-package sentence
+package proto
 
-import "io"
+import (
+	"fmt"
+	"io"
+	"sync"
+)
 
 // Writer writes words to a RouterOS device.
-type Writer interface {
-	WriteString(word string)
-	Err() error
-}
-
-type writer struct {
+type Writer struct {
 	io.Writer
 	err error
+	sync.Mutex
 }
 
 // NewWriter returns a new Writer to write to w.
-func NewWriter(w io.Writer) Writer {
-	return &writer{Writer: w}
+func NewWriter(w io.Writer) *Writer {
+	return &Writer{Writer: w}
 }
 
 // Err returns the last error that occurred on this Writer.
-func (w *writer) Err() error {
+func (w *Writer) Err() error {
 	return w.err
 }
 
-// WriteString writes one RouterOS word.
-func (w *writer) WriteString(word string) {
+// BeginSentence simply calls Lock().
+func (w *Writer) BeginSentence() {
+	w.Lock()
+}
+
+// EndSentence writes an empty word and calls Unlock(). It returns Err().
+func (w *Writer) EndSentence() error {
+	w.WriteWord("")
+	err := w.err
+	w.Unlock()
+	return err
+}
+
+func (w *Writer) Printf(format string, a ...interface{}) {
+	word := fmt.Sprintf(format, a...)
+	w.WriteWord(word)
+}
+
+// WriteWord writes one RouterOS word.
+func (w *Writer) WriteWord(word string) {
 	w.writeBytes([]byte(word))
 }
 
-func (w *writer) writeBytes(word []byte) {
+func (w *Writer) writeBytes(word []byte) {
 	if w.err != nil {
 		return
 	}
@@ -44,7 +62,7 @@ func (w *writer) writeBytes(word []byte) {
 	}
 }
 
-func (w *writer) writeLength(l int) error {
+func (w *Writer) writeLength(l int) error {
 	_, err := w.Write(encodeLength(l))
 	return err
 }

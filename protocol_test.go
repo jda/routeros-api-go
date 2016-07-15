@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"testing"
 
-	"joi.com.br/mikrotik-go/sentence"
+	"joi.com.br/mikrotik-go/proto"
 )
 
 type TestVars struct {
@@ -74,7 +74,7 @@ func TestCommand(t *testing.T) {
 	}
 	res, err := c.Call("/system/resource/getall", nil)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 	uptime := res.Re[0].Map["uptime"]
 	t.Logf("Uptime: %s\n", uptime)
@@ -92,10 +92,10 @@ func TestCommandAsyncA(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	go c.Loop()
+	c.Async()
 	res, err := c.Call("/system/resource/getall", nil)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 	uptime := res.Re[0].Map["uptime"]
 	t.Logf("Uptime: %s\n", uptime)
@@ -316,14 +316,14 @@ func TestQueryCausesError(t *testing.T) {
 }
 
 type sentenceTester struct {
-	sentences []*sentence.Sentence
+	sentences []*proto.Sentence
 }
 
-func newSentenceTester(sentences []*sentence.Sentence) *Client {
-	return &Client{sentenceReader: &sentenceTester{sentences}}
+func newSentenceTester(sentences []*proto.Sentence) *Client {
+	return &Client{r: &sentenceTester{sentences}}
 }
 
-func (p *sentenceTester) ReadSentence() (*sentence.Sentence, error) {
+func (p *sentenceTester) ReadSentence() (*proto.Sentence, error) {
 	if len(p.sentences) == 0 {
 		return nil, io.EOF
 	}
@@ -334,18 +334,18 @@ func (p *sentenceTester) ReadSentence() (*sentence.Sentence, error) {
 
 func TestReceive(t *testing.T) {
 	// Return a list of sentences.
-	r := func(sentences ...*sentence.Sentence) []*sentence.Sentence {
+	r := func(sentences ...*proto.Sentence) []*proto.Sentence {
 		return sentences
 	}
 	// Return one sentence.
-	s := func(words ...string) *sentence.Sentence {
+	s := func(words ...string) *proto.Sentence {
 		b := &bytes.Buffer{}
-		w := sentence.NewWriter(b)
+		w := proto.NewWriter(b)
 		for _, word := range words {
-			w.WriteString(word)
+			w.WriteWord(word)
 		}
-		w.WriteString("")
-		r := sentence.NewReader(b)
+		w.WriteWord("")
+		r := proto.NewReader(b)
 		sen, err := r.ReadSentence()
 		if err != nil {
 			t.Fatalf("ReadSentence(%#q)=%#v", words, err)
@@ -354,7 +354,7 @@ func TestReceive(t *testing.T) {
 	}
 	// Valid replies.
 	for i, test := range []struct {
-		in  []*sentence.Sentence
+		in  []*proto.Sentence
 		out string
 	}{
 		{r(s("!done")), `!done []`},
@@ -376,7 +376,7 @@ func TestReceive(t *testing.T) {
 	}
 	// Must return EOF.
 	for i, test := range []struct {
-		in []*sentence.Sentence
+		in []*proto.Sentence
 	}{
 		{r()},
 		{r(s())},
@@ -390,7 +390,7 @@ func TestReceive(t *testing.T) {
 	}
 	// Must return ErrUnknownReply.
 	for i, test := range []struct {
-		in  []*sentence.Sentence
+		in  []*proto.Sentence
 		out string
 	}{
 		{r(s("=name")), `unknown RouterOS reply word: =name`},
@@ -410,7 +410,7 @@ func TestReceive(t *testing.T) {
 	}
 	// Must return ErrFromDevice.
 	for i, test := range []struct {
-		in  []*sentence.Sentence
+		in  []*proto.Sentence
 		out string
 	}{
 		{r(s("!trap")), `RouterOS: unknown: !trap []`},

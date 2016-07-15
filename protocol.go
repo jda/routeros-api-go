@@ -4,10 +4,10 @@ package routeros
 import (
 	"fmt"
 
-	"joi.com.br/mikrotik-go/sentence"
+	"joi.com.br/mikrotik-go/proto"
 )
 
-func (r *Reply) addSentence(sen *sentence.Sentence) (bool, error) {
+func (r *Reply) addSentence(sen *proto.Sentence) (bool, error) {
 	switch sen.Word {
 	case "!done":
 		r.Done = sen
@@ -28,7 +28,7 @@ func (r *Reply) addSentence(sen *sentence.Sentence) (bool, error) {
 func (c *Client) readReply() (*Reply, error) {
 	reply := &Reply{}
 	for {
-		sen, err := c.sentenceReader.ReadSentence()
+		sen, err := c.r.ReadSentence()
 		if err != nil {
 			return nil, err
 		}
@@ -42,29 +42,33 @@ func (c *Client) readReply() (*Reply, error) {
 	}
 }
 
-// Loop starts asynchronous mode. It only returns if there is an error.
-func (c *Client) Loop() error {
+// Async starts asynchronous mode. It returns immediately.
+func (c *Client) Async() {
+	c.Lock()
+	defer c.Unlock()
+	if c.async {
+		panic("Async must be called only once")
+	}
 	c.async = true
-	defer func() { c.async = false }()
-
 	c.tags = make(map[string]*AsyncReply)
-	defer func() {
-		for _, a := range c.tags {
-			close(a.C)
-		}
-	}()
+	go c.asyncLoop()
+}
 
+func (c *Client) asyncLoop() {
 	for {
-		sen, err := c.sentenceReader.ReadSentence()
+		sen, err := c.r.ReadSentence()
 		if err != nil {
-			return err
+			c.closeTags(err)
+			return
 		}
+
 		c.Lock()
 		a, ok := c.tags[sen.Tag]
 		c.Unlock()
 		if !ok {
 			continue
 		}
+
 		done, err := a.Reply.addSentence(sen)
 		if err != nil {
 			a.Err = err
@@ -75,9 +79,20 @@ func (c *Client) Loop() error {
 	}
 }
 
+func (c *Client) closeTags(err error) {
+	c.Lock()
+	defer c.Unlock()
+	for _, a := range c.tags {
+		if a.Err == nil {
+			a.Err = err
+		}
+		close(a.C)
+	}
+}
+
 // UnknownReplyError records the sentence whose Word is unknown.
 type UnknownReplyError struct {
-	Sentence *sentence.Sentence
+	Sentence *proto.Sentence
 }
 
 func (err *UnknownReplyError) Error() string {
@@ -87,7 +102,7 @@ func (err *UnknownReplyError) Error() string {
 // DeviceError records the sentence containing the error received from the device.
 // The sentence may have Word !trap or !fatal.
 type DeviceError struct {
-	Sentence *sentence.Sentence
+	Sentence *proto.Sentence
 }
 
 func (err *DeviceError) Error() string {

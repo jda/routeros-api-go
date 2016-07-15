@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"joi.com.br/mikrotik-go/sentence"
+	"joi.com.br/mikrotik-go/proto"
 )
 
 var (
@@ -21,8 +21,8 @@ var (
 
 // Reply has all lines from a reply. They must all have the same .tag value.
 type Reply struct {
-	Re   []*sentence.Sentence
-	Done *sentence.Sentence
+	Re   []*proto.Sentence
+	Done *proto.Sentence
 }
 
 func (r *Reply) String() string {
@@ -43,16 +43,16 @@ type AsyncReply struct {
 
 // Client is a RouterOS API client.
 type Client struct {
-	Address        string
-	Username       string
-	Password       string
-	TLSConfig      *tls.Config
-	conn           net.Conn
-	sentenceReader sentence.Reader
-	sentenceWriter sentence.Writer
-	async          bool
-	nextTag        int64
-	tags           map[string]*AsyncReply
+	Address   string
+	Username  string
+	Password  string
+	TLSConfig *tls.Config
+	conn      net.Conn
+	r         proto.Reader
+	w         *proto.Writer
+	async     bool
+	nextTag   int64
+	tags      map[string]*AsyncReply
 	sync.Mutex
 }
 
@@ -87,8 +87,8 @@ func (c *Client) Connect() error {
 	if err != nil {
 		return err
 	}
-	c.sentenceReader = sentence.NewReader(c.conn)
-	c.sentenceWriter = sentence.NewWriter(c.conn)
+	c.r = proto.NewReader(c.conn)
+	c.w = proto.NewWriter(c.conn)
 
 	// try to log in
 	res, err := c.Call("/login", nil)
@@ -128,28 +128,22 @@ func (c *Client) Connect() error {
 }
 
 func (c *Client) Query(command string, q Query) (*Reply, error) {
-	c.Lock()
-	defer c.Unlock()
-
-	w := c.sentenceWriter
-	w.WriteString(command)
+	c.w.BeginSentence()
+	c.w.WriteWord(command)
 
 	// Set property list if present
 	if len(q.Proplist) > 0 {
-		proplist := fmt.Sprintf("=.proplist=%s", strings.Join(q.Proplist, ","))
-		w.WriteString(proplist)
+		c.w.Printf("=.proplist=%s", strings.Join(q.Proplist, ","))
 	}
 
 	// send params if we got them
 	if len(q.Pairs) > 0 {
 		for _, v := range q.Pairs {
-			word := fmt.Sprintf("?%s%s=%s", v.Op, v.Key, v.Value)
-			w.WriteString(word)
+			c.w.Printf("?%s%s=%s", v.Op, v.Key, v.Value)
 		}
 
 		if q.Op != "" {
-			word := fmt.Sprintf("?#%s", q.Op)
-			w.WriteString(word)
+			c.w.Printf("?#%s", q.Op)
 		}
 	}
 
@@ -157,17 +151,13 @@ func (c *Client) Query(command string, q Query) (*Reply, error) {
 }
 
 func (c *Client) Call(command string, params []Pair) (*Reply, error) {
-	c.Lock()
-	defer c.Unlock()
-
-	w := c.sentenceWriter
-	w.WriteString(command)
+	c.w.BeginSentence()
+	c.w.WriteWord(command)
 
 	// send params if we got them
 	if len(params) > 0 {
 		for _, v := range params {
-			word := fmt.Sprintf("=%s=%s", v.Key, v.Value)
-			w.WriteString(word)
+			c.w.Printf("=%s=%s", v.Key, v.Value)
 		}
 	}
 
@@ -182,27 +172,32 @@ func (c *Client) endCommand() (*Reply, error) {
 }
 
 func (c *Client) endCommandSync() (*Reply, error) {
-	w := c.sentenceWriter
-	w.WriteString("")
-	if w.Err() != nil {
-		return nil, w.Err()
+	err := c.w.EndSentence()
+	if err != nil {
+		return nil, err
 	}
 	return c.readReply()
 }
 
 func (c *Client) endCommandAsync() (*Reply, error) {
 	a := c.newAsyncReply()
-	w := c.sentenceWriter
-	w.WriteString(fmt.Sprintf(".tag=%s", a.Tag))
+	c.w.Printf(".tag=%s", a.Tag)
+
 	c.Lock()
-	w.WriteString("")
-	if w.Err() != nil {
+	err := c.w.EndSentence()
+	if err != nil {
 		c.Unlock()
-		return nil, w.Err()
+		return nil, err
 	}
-	c.addAsyncReply(a)
+	c.tags[a.Tag] = a
 	c.Unlock()
+
 	<-a.C
+
+	c.Lock()
+	delete(c.tags, a.Tag)
+	c.Unlock()
+
 	return a.Reply, a.Err
 }
 
@@ -213,14 +208,4 @@ func (c *Client) newAsyncReply() *AsyncReply {
 		Tag:   fmt.Sprintf("%d", c.nextTag),
 		C:     make(chan struct{}),
 	}
-}
-
-func (c *Client) addAsyncReply(a *AsyncReply) {
-	go func() {
-		<-a.C
-		c.Lock()
-		delete(c.tags, a.Tag)
-		c.Unlock()
-	}()
-	c.tags[a.Tag] = a
 }

@@ -1,4 +1,4 @@
-package sentence
+package proto
 
 import (
 	"bytes"

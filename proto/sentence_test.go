@@ -1,4 +1,4 @@
-package sentence
+package proto
 
 import (
 	"bytes"
@@ -21,9 +21,9 @@ func TestReadWrite(t *testing.T) {
 		// Write sentence into buf.
 		w := NewWriter(buf)
 		for _, word := range test.in {
-			w.WriteString(word)
+			w.WriteWord(word)
 		}
-		w.WriteString("")
+		w.WriteWord("")
 		// Read sentence from buf.
 		r := NewReader(buf)
 		sen, err := r.ReadSentence()
