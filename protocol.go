@@ -3,131 +3,112 @@ package routeros
 
 import (
 	"fmt"
-	"io"
-	"strings"
+
+	"joi.com.br/mikrotik-go/proto"
 )
 
-// Encode and send a single line
-func (c *Client) send(word string) error {
-	bword := []byte(word)
-	prefix := prefixlen(len(bword))
-
-	_, err := c.conn.Write(prefix.Bytes())
-	if err != nil {
-		return err
+func (r *Reply) addSentence(sen *proto.Sentence) (bool, error) {
+	switch sen.Word {
+	case "!done":
+		r.Done = sen
+		return true, nil
+	case "!trap", "!fatal":
+		return true, &DeviceError{sen}
+	case "!re":
+		r.Re = append(r.Re, sen)
+	case "":
+		// API docs say that empty sentences should be ignored
+	default:
+		return true, &UnknownReplyError{sen}
 	}
-
-	_, err = c.conn.Write(bword)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return false, nil
 }
 
-// Get reply
-func (c *Client) receive() (reply Reply, err error) {
-	defer func() {
-		r := recover()
-		if r == nil {
-			return
-		}
-		e, ok := r.(mtbyteprotoError)
-		if ok {
-			err = e
-			return
-		}
-		panic(r)
-	}()
-
-	re := false
-	done := false
-	trap := false
-	subReply := make(map[string]string, 1)
+// readReply reads one reply synchronously. It returns the reply.
+func (c *Client) readReply() (*Reply, error) {
+	reply := &Reply{}
 	for {
-		length := c.getlen()
-		if length == 0 && done {
-			break
+		sen, err := c.r.ReadSentence()
+		if err != nil {
+			return nil, err
+		}
+		done, err := reply.addSentence(sen)
+		if err != nil {
+			return nil, err
+		}
+		if done {
+			return reply, nil
+		}
+	}
+}
+
+// Async starts asynchronous mode. It returns immediately.
+func (c *Client) Async() {
+	c.Lock()
+	defer c.Unlock()
+	if c.async {
+		panic("Async must be called only once")
+	}
+	c.async = true
+	c.tags = make(map[string]*AsyncReply)
+	go c.asyncLoop()
+}
+
+func (c *Client) asyncLoop() {
+	for {
+		sen, err := c.r.ReadSentence()
+		if err != nil {
+			c.closeTags(err)
+			return
 		}
 
-		inbuf := make([]byte, length)
-		n, err := io.ReadAtLeast(c.conn, inbuf, int(length))
-		// We don't actually care about EOF, but things like ErrUnspectedEOF we would
-		if err != nil && err != io.EOF {
-			return reply, err
-		}
-
-		// be annoying about reading exactly the correct number of bytes
-		if int64(n) != length {
-			return reply, fmt.Errorf("incorrect number of bytes read")
-		}
-
-		word := string(inbuf)
-		if word == "!done" {
-			done = true
+		c.Lock()
+		a, ok := c.tags[sen.Tag]
+		c.Unlock()
+		if !ok {
 			continue
 		}
 
-		if word == "!trap" { // error reply
-			trap = true
-			continue
+		done, err := a.Reply.addSentence(sen)
+		if err != nil {
+			a.Err = err
 		}
-
-		if word == "!re" { // new term so start a new pair
-			if len(subReply) > 0 {
-				// we've already used this subreply because it has stuff in it
-				// so we need to close it out and make a new one
-				reply.SubPairs = append(reply.SubPairs, subReply)
-				subReply = make(map[string]string, 1)
-			} else {
-				re = true
-			}
-			continue
-		}
-
-		if strings.Contains(word, "=") {
-			parts := strings.SplitN(word, "=", 3)
-			var key, val string
-			if len(parts) == 3 {
-				key = parts[1]
-				val = parts[2]
-			} else {
-				key = parts[1]
-			}
-
-			if re {
-				if key != "" {
-					subReply[key] = val
-				}
-			} else {
-				var p Pair
-				p.Key = key
-				p.Value = val
-				reply.Pairs = append(reply.Pairs, p)
-			}
+		if done {
+			close(a.C)
 		}
 	}
+}
 
-	if len(subReply) > 0 {
-		reply.SubPairs = append(reply.SubPairs, subReply)
-	}
-
-	// if we got a error flag from routeros, look for a message and signal err
-	if trap {
-		trapMesasge := ""
-		for _, v := range reply.Pairs {
-			if v.Key == "message" {
-				trapMesasge = v.Value
-				continue
-			}
+func (c *Client) closeTags(err error) {
+	c.Lock()
+	defer c.Unlock()
+	for _, a := range c.tags {
+		if a.Err == nil {
+			a.Err = err
 		}
-
-		if trapMesasge == "" {
-			return reply, fmt.Errorf("routeros: unknown error")
-		} else {
-			return reply, fmt.Errorf("routeros: %s", trapMesasge)
-		}
+		close(a.C)
 	}
+}
 
-	return reply, nil
+// UnknownReplyError records the sentence whose Word is unknown.
+type UnknownReplyError struct {
+	Sentence *proto.Sentence
+}
+
+func (err *UnknownReplyError) Error() string {
+	return fmt.Sprintf("unknown RouterOS reply word: %s", err.Sentence.Word)
+}
+
+// DeviceError records the sentence containing the error received from the device.
+// The sentence may have Word !trap or !fatal.
+type DeviceError struct {
+	Sentence *proto.Sentence
+}
+
+func (err *DeviceError) Error() string {
+	m := err.Sentence.Map["message"]
+	if m == "" {
+		m = fmt.Sprintf("unknown: %s", err.Sentence)
+	}
+	return fmt.Sprintf("RouterOS: %s", m)
 }
