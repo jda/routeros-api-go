@@ -26,8 +26,19 @@ func (c *Client) send(word string) error {
 }
 
 // Get reply
-func (c *Client) receive() (Reply, error) {
-	var reply Reply
+func (c *Client) receive() (reply Reply, err error) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		e, ok := r.(mtbyteprotoError)
+		if ok {
+			err = e
+			return
+		}
+		panic(r)
+	}()
 
 	re := false
 	done := false

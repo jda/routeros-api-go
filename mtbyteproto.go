@@ -4,10 +4,15 @@ import (
 	"bytes"
 )
 
+type mtbyteprotoError error
+
 // Get just one byte because MT's size prefix is overoptimized
 func (c *Client) getone() int {
 	charlet := make([]byte, 1)
-	c.conn.Read(charlet)
+	_, err := c.conn.Read(charlet)
+	if err != nil {
+		panic(mtbyteprotoError(err))
+	}
 	numlet := int(charlet[0])
 	return numlet
 }
