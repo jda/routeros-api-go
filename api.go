@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
 	"strings"
 )
 
@@ -103,12 +104,15 @@ func (c *Client) Close() {
 }
 
 func (c *Client) Connect(user string, password string) error {
+    return c.ConnectTimeout(user, password, time.Second * 15)
+}
 
+func (c *Client) ConnectTimeout(user string, password string, timeout time.Duration) error {
 	var err error
 	if c.TLSConfig != nil {
 		c.conn, err = tls.Dial("tcp", c.address, c.TLSConfig)
 	} else {
-		c.conn, err = net.Dial("tcp", c.address)
+		c.conn, err = net.DialTimeout("tcp", c.address, timeout)
 	}
 	if err != nil {
 		return err
